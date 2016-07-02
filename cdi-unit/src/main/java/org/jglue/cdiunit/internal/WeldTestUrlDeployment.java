@@ -81,14 +81,14 @@ public class WeldTestUrlDeployment implements Deployment {
 	private Set<URL> cdiClasspathEntries = new HashSet<URL>();
 	private final ServiceRegistry serviceRegistry = new SimpleServiceRegistry();
 
-	public WeldTestUrlDeployment(ResourceLoader resourceLoader, Bootstrap bootstrap, Class<?> testClass) throws IOException {
+	public WeldTestUrlDeployment(ResourceLoader resourceLoader, Bootstrap bootstrap, Class<?> testClass, Method testMethod) throws IOException {
 
 		populateCdiClasspathSet();
 		BeansXml beansXml;
 		try {
 			beansXml = new BeansXmlImpl(new ArrayList<Metadata<String>>(), new ArrayList<Metadata<String>>(),
 					new ArrayList<Metadata<String>>(), new ArrayList<Metadata<String>>(), Scanning.EMPTY_SCANNING, new URL(
-							"file:cdi-unit"), BeanDiscoveryMode.ALL, "cdi-unit");
+							"file:cdi-unit"), BeanDiscoveryMode.ANNOTATED, "cdi-unit");
 		} catch (NoClassDefFoundError e) {
 			try {
 				beansXml = (BeansXml) BeansXmlImpl.class.getConstructors()[0].newInstance(new ArrayList<Metadata<String>>(),
@@ -109,6 +109,9 @@ public class WeldTestUrlDeployment implements Deployment {
 
 		classesToProcess.add(testClass);
 		extensions.add(new MetadataImpl<Extension>(new TestScopeExtension(testClass), TestScopeExtension.class.getName()));
+		if (testMethod != null) {
+			extensions.add(new MetadataImpl<Extension>(new ProducerConfigExtension(testMethod), ProducerConfigExtension.class.getName()));
+		}
 
 		try {
 			Class.forName("javax.faces.view.ViewScoped");
@@ -369,7 +372,7 @@ public class WeldTestUrlDeployment implements Deployment {
 				if (url.getFile().endsWith("/classes/")) {
 					URL webInfBeans = new URL(url, "../../src/main/webapp/WEB-INF/beans.xml");
 					try {
-						webInfBeans.openConnection();
+						webInfBeans.openConnection().connect();;
 						cdiClasspathEntries.add(url);
 					} catch (IOException e) {
 

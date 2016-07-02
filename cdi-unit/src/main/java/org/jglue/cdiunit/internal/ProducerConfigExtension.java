@@ -1,8 +1,11 @@
 package org.jglue.cdiunit.internal;
 
+import com.beust.jcommander.internal.Maps;
 import org.jglue.cdiunit.ProducerConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import javax.enterprise.context.ApplicationScoped;
+import javax.enterprise.context.Dependent;
 import javax.enterprise.context.spi.CreationalContext;
 import javax.enterprise.event.Observes;
 import javax.enterprise.inject.Any;
@@ -15,9 +18,11 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 public class ProducerConfigExtension implements Extension {
+	private static final Logger log = LoggerFactory.getLogger(ProducerConfigExtension.class);
 
 	private Method testMethod;
 
@@ -27,13 +32,14 @@ public class ProducerConfigExtension implements Extension {
 
 	@SuppressWarnings("unused")
 	void afterBeanDiscovery(@Observes AfterBeanDiscovery abd, BeanManager bm) throws Exception {
-		for (final Annotation annotation : testMethod.getAnnotations()) {
-			if (!annotation.annotationType().isAnnotationPresent(ProducerConfig.class)) {
-				continue;
-			}
-			if (!Modifier.isPublic(annotation.annotationType().getModifiers())) {
-				throw new RuntimeException("ProducerConfig annotation classes must be public");
-			}
+		Map<Class<? extends Annotation>, Annotation> values = Maps.newHashMap();
+		// get class annotations first:
+		addConfigValues(values, testMethod.getDeclaringClass().getAnnotations());
+		// method annotations will override class annotations:
+		addConfigValues(values, testMethod.getAnnotations());
+		for (final Annotation annotation : values.values()) {
+			log.debug("Defining bean: value={} class={} ",
+					annotation, annotation.getClass().getName());
 			AnnotatedType<? extends Annotation> at = bm.createAnnotatedType(annotation.getClass());
 			final InjectionTarget<? extends Annotation> it = bm.createInjectionTarget(at);
 			abd.addBean(new Bean<Annotation>() {
@@ -62,7 +68,7 @@ public class ProducerConfigExtension implements Extension {
 
 				@Override
 				public Class<? extends Annotation> getScope() {
-					return ApplicationScoped.class;
+					return Dependent.class;
 				}
 
 				@Override
@@ -91,6 +97,8 @@ public class ProducerConfigExtension implements Extension {
 
 				@Override
 				public Annotation create(CreationalContext<Annotation> ctx) {
+					// We return the same instance every time (despite @Dependent)
+					// but Annotations are immutable and thus safe to share.
 					return annotation;
 				}
 
@@ -101,6 +109,18 @@ public class ProducerConfigExtension implements Extension {
 				}
 
 			});
+		}
+	}
+
+	private static void addConfigValues(Map<Class<? extends Annotation>, Annotation> values, Annotation[] annotations) {
+		for (final Annotation annotation : annotations) {
+			if (!annotation.annotationType().isAnnotationPresent(ProducerConfig.class)) {
+				continue;
+			}
+			if (!Modifier.isPublic(annotation.annotationType().getModifiers())) {
+				throw new RuntimeException("ProducerConfig annotation classes must be public");
+			}
+			values.put(annotation.annotationType(), annotation);
 		}
 	}
 
